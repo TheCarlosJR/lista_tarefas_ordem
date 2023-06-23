@@ -1,0 +1,364 @@
+import 'package:flutter/material.dart'; //padrao
+import 'package:intl/intl.dart'; //datetime
+import 'package:async/async.dart'; //funcoes async
+import 'dart:convert'; //conversoes json
+import 'dart:io'; //arquivos
+import 'package:path_provider/path_provider.dart'; //pasta padrao dispositivos
+
+
+//constantes
+const IconData iconTodo1 = Icons.calendar_today_outlined;
+const IconData iconTodo2 = Icons.check_circle_outline_outlined;
+const IconData iconTodo3 = Icons.fmd_bad_outlined;
+const _nameDataFile = 'data';
+
+
+//estrutura
+class StructDel {
+  Map<String, dynamic> itemMap = {};
+  int index = -1;
+}
+
+
+class HomePage extends StatefulWidget {
+  const HomePage({Key? key}) : super(key: key);
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  final TextEditingController editTextCtrl1 = TextEditingController();
+
+  List _todoList = [];
+  final StructDel _todoDel = StructDel();
+
+  //obtem objeto arquivo
+  Future<File> _getFile() async {
+    //obtem caminho de uma pasta segura
+    final dirData = await getApplicationDocumentsDirectory();
+
+    return File("${dirData.path}/$_nameDataFile.json");
+  }
+
+  //salva dados
+  Future<File> _saveData() async {
+    String dataS = json.encode(_todoList);
+    final fileT = await _getFile();
+    return fileT.writeAsString(dataS);
+  }
+
+  //carrega dados
+  Future<String?> _loadData() async {
+    try {
+      final fileT = await _getFile();
+      final fileTStr = fileT.readAsString();
+      return fileTStr;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  //ordena lista de dados
+  //a > b = +
+  //a = b = 0
+  //a < b = -
+  int _sortListTodo(a, b) {
+    int c = 0;
+
+    //1) comeca comparando pelo boolean
+    if ((a["done"] == true) && (b["done"] == false)) {
+      return 1;
+    }
+    else
+    if ((a["done"] == false) && (b["done"] == true)) {
+      return -1;
+    }
+
+    //2) compara pelo argumento data
+    else {
+      c = a["date"].compareTo(b["date"]);
+      if (c != 0) {
+        return c * (-1);
+      }
+
+      //3) compara pelo argumento nome
+      else {
+        c = a["title"].compareTo(b["title"]);
+        return c;
+      }
+    }
+  }
+
+  //evento toque botao add
+  void _onTapAdd() {
+    _addTodoListItem(editTextCtrl1.text);
+
+    //limpa texto do textfield
+    editTextCtrl1.text = "";
+
+    //retira teclado retirando foco do textfield
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
+  //evento toque linha tarefa
+  void _onTapTodo() {}
+
+  //evento toque icone tarefa
+  void _onTapTodoIcon(int index) {
+    setState(() {
+      //comuta estado
+      _todoList[index]["done"] = !_todoList[index]["done"];
+
+      //ordena lista
+      _todoList.sort(_sortListTodo);
+
+      //salva dados
+      _saveData();
+    });
+  }
+
+  //evento ao desfazer exclusao
+  void _onDismissTodoUndo() {
+    setState(() {
+      //volta na posicao que tava
+      _todoList.insert(_todoDel.index, _todoDel.itemMap);
+
+      //ordena lista
+      _todoList.sort(_sortListTodo);
+
+      //salva dados
+      _saveData();
+    });
+
+    //limpa backup
+    _todoDel.itemMap = {};
+    _todoDel.index = -1;
+  }
+
+  //evento ao arrastar para o lado
+  void _onDismissTodo(DismissDirection dir, int index) {
+    //backup dos dados
+    _todoDel.itemMap = Map.from(_todoList[index]);
+    _todoDel.index = index;
+
+    //atualiza tela
+    setState(() {
+      //retira da lista
+      _todoList.removeAt(index);
+
+      //salva dados
+      _saveData();
+    });
+
+    //widget de mensagem
+    final snackDel = SnackBar(
+      duration: const Duration(seconds: 5),
+      content: Text(
+          "${_todoDel.itemMap["title"]} foi removido"
+      ),
+      action: SnackBarAction(
+        label: "Desfazer",
+        onPressed: _onDismissTodoUndo,
+      ),
+    );
+
+    //retira mensagens atuais quando houverem
+    ScaffoldMessenger.of(context).clearSnackBars();
+
+    //mostra nova mensagem
+    ScaffoldMessenger.of(context).showSnackBar(snackDel);
+  }
+
+  //adiciona item na lista
+  void _addTodoListItem(String text) {
+    Map<String, dynamic> newTodo = Map();
+
+    newTodo["title"] = text;
+    newTodo["done"] = false;
+    newTodo["date"] = DateTime.now().toIso8601String();
+
+    //atualiza tela
+    setState(() {
+      //coloca novo item na lista
+      _todoList.add(newTodo);
+
+      //ordena lista
+      _todoList.sort(_sortListTodo);
+
+      //salva dados
+      _saveData();
+    });
+  }
+
+  //constroi componente linha drawer
+  List<Widget> buildDrawer() {
+    //constroi um componente por vez
+    Widget buildDrawerInt(String text, IconData icon, Function()? onTapEv)
+    {
+      return ListTile(
+        key: UniqueKey(),
+        tileColor: Colors.blue.shade700,
+        textColor: Colors.white,
+        leading: Icon(
+          icon,
+          color: Colors.white,
+        ),
+        title: Text(text),
+        onTap: onTapEv,
+      );
+    }
+    //retorna em lista
+    return [
+      buildDrawerInt(
+          "Fechar aba", Icons.menu_open, null
+      ),
+      const Divider(height: 0),
+      buildDrawerInt(
+          "Selecionar tudo", Icons.select_all, null
+      ),
+      const Divider(height: 0),
+      buildDrawerInt(
+          "Marcar tudo", Icons.playlist_add_check, null
+      ),
+      const Divider(height: 0),
+      buildDrawerInt(
+          "Desmarcar tudo", Icons.playlist_remove, null
+      ),
+      const Divider(height: 0),
+      buildDrawerInt(
+          "Limpar tudo", Icons.delete_forever, null
+      ),
+      const Divider(height: 0),
+      buildDrawerInt(
+          "Sobre este App", Icons.question_mark, null
+      ),
+      const Divider(height: 0),
+    ];
+  }
+
+  //constroi componente linha com a tarefa
+  Widget? _todoItemBuilder(BuildContext context, int index) {
+    return Dismissible(
+      key: UniqueKey(), //identificador unico
+      direction: DismissDirection.startToEnd,
+      background: Container(
+        color: Colors.red,
+        child: const Align(
+          alignment: Alignment(-0.8, 0),
+          child: Icon(
+            Icons.delete,
+            color: Colors.white,
+          ),
+        ),
+      ),
+      onDismissed: (dir) {
+        _onDismissTodo(dir, index);
+      },
+      //conteudo
+      child: ListTile(
+        hoverColor: Colors.lightBlueAccent,
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _todoList[index]["title"],
+                style: const TextStyle(
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            Text(
+              DateFormat("dd/MM/yy\n HH:mm:ss")
+                  .format(DateTime.parse(_todoList[index]["date"])),
+              style: const TextStyle(
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+        trailing: IconButton(
+          iconSize: 32,
+          hoverColor: Colors.lightBlueAccent,
+          splashColor: Colors.lightBlue,
+          highlightColor: const Color(0x104E80FF),
+          icon: Icon(_todoList[index]["done"] ? iconTodo2 : iconTodo1),
+          onPressed: () {
+            _onTapTodoIcon(index);
+          },
+        ),
+      ),
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData().then((String? val) {
+      setState(() {
+        _todoList = json.decode(val ?? "[]") as List;
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      drawer: Container(
+        width: 250,
+        color: Colors.blue,
+        child: ListView(
+          children: buildDrawer(),
+        ),
+      ),
+      appBar: AppBar(
+        backgroundColor: Colors.lightBlue,
+        title: const Text("Ordenador de Tarefas"),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: editTextCtrl1,
+                      decoration: const InputDecoration(
+                        labelText: "Tarefa",
+                        labelStyle: TextStyle(
+                          fontSize: 18,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton(
+                    onPressed: _onTapAdd,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.lightBlue,
+                      fixedSize: const Size.fromHeight(64),
+                    ),
+                    child: const Icon(
+                      Icons.add_box_rounded,
+                      size: 32,
+                    ),
+                  ),
+                ],
+              ),
+              Flexible(
+                child: ListView.builder(
+                  padding: const EdgeInsets.only(top: 16),
+                  itemCount: _todoList.length,
+                  itemBuilder: _todoItemBuilder,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
